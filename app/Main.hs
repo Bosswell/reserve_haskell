@@ -19,18 +19,27 @@ import Data.Time
 makeUTCTimeValid :: Day -> TimeOfDay -> UTCTime
 makeUTCTimeValid d tod = UTCTime { utctDay = d, utctDayTime = timeOfDayToTime tod}
 
-getDatePeriod :: Maybe [(UTCTime, UTCTime)]
-getDatePeriod = do
+filterWeekDays :: Bool -> [Day] -> [Day]
+filterWeekDays True days = days
+filterWeekDays _ days = filter (\day -> let dof = dayOfWeek day in dof `elem` [Saturday, Sunday]) days
+
+f = do
+    dayFrom <- fromGregorianValid 2010 3 4
+    dayTo <- fromGregorianValid 2010 3 10
+
+    let includeWeekend = False;
+
+    return $ map getDatePeriod (filterWeekDays includeWeekend [dayFrom .. dayTo])
+
+getDatePeriod :: Day -> Maybe [(UTCTime, UTCTime)]
+getDatePeriod day = do
+    hourFrom <- makeTimeOfDayValid 10 30 00
+    hourTo <- makeTimeOfDayValid 12 00 00
+
     let eventDuration = 1800 :: NominalDiffTime
     let eventGap = 0 :: NominalDiffTime
 
-    dayFrom <- parseTimeM True defaultTimeLocale "%Y-%-m-%-d" "2010-3-04"
-    hourFrom <- makeTimeOfDayValid 10 30 00
-
-    dayTo <- parseTimeM True defaultTimeLocale "%Y-%-m-%-d" "2010-3-04"
-    hourTo <- makeTimeOfDayValid 18 00 00
-
-    return $ createEventsPeriods (makeUTCTimeValid dayFrom hourFrom) (makeUTCTimeValid dayTo hourTo) eventDuration eventGap
+    return $ createEventsPeriods (makeUTCTimeValid day hourFrom) (makeUTCTimeValid day hourTo) eventDuration eventGap
 
 createEventsPeriods :: UTCTime -> UTCTime -> NominalDiffTime -> NominalDiffTime -> [(UTCTime, UTCTime)]
 createEventsPeriods utcFrom utcTo eventDuration eventGap
@@ -39,5 +48,4 @@ createEventsPeriods utcFrom utcTo eventDuration eventGap
         [(utcFrom, addUTCTime (eventDuration - 1) utcFrom)] ++
         createEventsPeriods (addUTCTime (eventDuration + eventGap) utcFrom) utcTo eventDuration eventGap
 
-main = print $ getDatePeriod
-
+main = print $ f
