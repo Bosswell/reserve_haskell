@@ -10,8 +10,8 @@ data GenerateEventsStruct = GenerateEvents {
     eventDuration :: Int,
     includeWeekend :: Bool,
     eventGenerationFlow :: EventGenerationFlow,
-    hourFrom :: TimeOfDay,
-    hourTo :: TimeOfDay,
+    hourFrom :: Maybe TimeOfDay,
+    hourTo :: Maybe TimeOfDay
 } deriving Show;
 
 makeUTCTimeValid :: Day -> TimeOfDay -> UTCTime
@@ -26,33 +26,23 @@ normalizeMinutes minutes
                 | minutes `mod` 5 == 0 = minutes
                 | otherwise = ((minutes `div` 5) + 1) * 5
 
-f = do
-    dayFrom <- fromGregorianValid 2010 3 4
-    dayTo <- fromGregorianValid 2010 3 10
+createEvent :: Int -> (UTCTime, UTCTime) -> Maybe ()
+createEvent a b | eventCanBeCreated == False = Nothing
+                | otherwise = Just ()
+    where eventCanBeCreated = doesSubjectHasOngoingEventsInPeriod a b
 
-    let dto = GenerateEvents {
-        subjectId = 1,
-        eventDuration = 30 * 60,
-        includeWeekend = False,
-        eventGenerationFlow = Period dayFrom dayTo
---        hourFrom = makeTimeOfDayValid 10 30 00,
---        hourTo = makeTimeOfDayValid 11 50 00
-    }
+-- TODO Get info from DB
+doesSubjectHasOngoingEventsInPeriod :: Int -> (UTCTime, UTCTime) -> Bool
+doesSubjectHasOngoingEventsInPeriod _ _ = False
 
-    return $ map getDatePeriod (filterWeekend True [dayFrom .. dayTo])
+-- TODO Do some SQL insert
+insertEvent :: Int -> (UTCTime, UTCTime) -> ()
+insertEvent subjectId (utcFrom, utcTo) = ()
 
---createEvent :: Int -> (UTCTime, UTCTime)
---createEvent subjectId
-
-getDatePeriod :: Day -> Maybe [(UTCTime, UTCTime)]
-getDatePeriod day = do
-    hourFrom <- makeTimeOfDayValid 10 30 00
-    hourTo <- makeTimeOfDayValid 11 50 00
-
-    let eventDuration = 1800 :: NominalDiffTime
-    let eventGap = 0 :: NominalDiffTime
-
-    return $ createEventsPeriods (makeUTCTimeValid day hourFrom) (makeUTCTimeValid day hourTo) eventDuration eventGap
+getDayDatePeriod :: TimeOfDay -> TimeOfDay -> Day -> [(UTCTime, UTCTime)]
+getDayDatePeriod hourFrom hourTo day = createEventsPeriods (makeUTCTimeValid day hourFrom) (makeUTCTimeValid day hourTo) eventDuration eventGap
+    where eventDuration = 1800
+          eventGap = 0
 
 createEventsPeriods :: UTCTime -> UTCTime -> NominalDiffTime -> NominalDiffTime -> [(UTCTime, UTCTime)]
 createEventsPeriods utcFrom utcTo eventDuration eventGap
@@ -63,4 +53,23 @@ createEventsPeriods utcFrom utcTo eventDuration eventGap
         createEventsPeriods (addUTCTime (eventDuration + eventGap) utcFrom) utcTo eventDuration eventGap
     where utcToInPeriod = addUTCTime (eventDuration - 1) utcFrom
 
-main = print $ f
+createEvents = do
+    dayFrom <- fromGregorianValid 2010 3 4
+    dayTo <- fromGregorianValid 2010 3 10
+
+    hourFrom <- makeTimeOfDayValid 10 30 00
+    hourTo <- makeTimeOfDayValid 11 50 00
+
+    let dto = GenerateEvents {
+        subjectId = 1,
+        eventDuration = 30 * 60,
+        includeWeekend = False,
+        eventGenerationFlow = Period dayFrom dayTo,
+        hourFrom = makeTimeOfDayValid 10 30 00,
+        hourTo = makeTimeOfDayValid 11 50 00
+    }
+    let eventsList = map (getDayDatePeriod hourFrom hourTo) (filterWeekend True [dayFrom .. dayTo])
+
+    return $ fmap (createEvent 7) <$> eventsList
+
+main = print $ createEvents
