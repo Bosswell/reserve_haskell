@@ -39,8 +39,8 @@ doesSubjectHasOngoingEventsInPeriod _ _ = False
 insertEvent :: Int -> (UTCTime, UTCTime) -> ()
 insertEvent subjectId (utcFrom, utcTo) = ()
 
-getDayDatePeriod :: TimeOfDay -> TimeOfDay -> Day -> [(UTCTime, UTCTime)]
-getDayDatePeriod hourFrom hourTo day = createEventsPeriods (makeUTCTimeValid day hourFrom) (makeUTCTimeValid day hourTo) eventDuration eventGap
+getEventsOfTheDay :: TimeOfDay -> TimeOfDay -> Day -> [(UTCTime, UTCTime)]
+getEventsOfTheDay hourFrom hourTo day = createEventsPeriods (makeUTCTimeValid day hourFrom) (makeUTCTimeValid day hourTo) eventDuration eventGap
     where eventDuration = 1800
           eventGap = 0
 
@@ -53,6 +53,7 @@ createEventsPeriods utcFrom utcTo eventDuration eventGap
         createEventsPeriods (addUTCTime (eventDuration + eventGap) utcFrom) utcTo eventDuration eventGap
     where utcToInPeriod = addUTCTime (eventDuration - 1) utcFrom
 
+createEvents :: Maybe [Maybe ()]
 createEvents = do
     dayFrom <- fromGregorianValid 2010 3 4
     dayTo <- fromGregorianValid 2010 3 10
@@ -68,8 +69,8 @@ createEvents = do
         hourFrom = makeTimeOfDayValid 10 30 00,
         hourTo = makeTimeOfDayValid 11 50 00
     }
-    let eventsList = map (getDayDatePeriod hourFrom hourTo) (filterWeekend True [dayFrom .. dayTo])
+    let eventsList = concat $ map (getEventsOfTheDay hourFrom hourTo) (filterWeekend True [dayFrom .. dayTo])
 
-    return $ fmap (createEvent 7) <$> eventsList
+    return $ fmap (createEvent 7) eventsList
 
 main = print $ createEvents
