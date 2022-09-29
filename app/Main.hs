@@ -2,16 +2,18 @@ module Main where
 
 import Control.Monad
 import Data.Time
+import Repository.Subject
 
 data EventGenerationFlow = Select [Day] | Period Day Day deriving Show
 
-data GenerateEventsStruct = GenerateEvents {
+data GenerateEvents = GenerateEvents {
     subjectId :: Int,
-    eventDuration :: Int,
+    eventDuration :: NominalDiffTime,
+    eventGap :: NominalDiffTime,
     includeWeekend :: Bool,
     eventGenerationFlow :: EventGenerationFlow,
-    hourFrom :: Maybe TimeOfDay,
-    hourTo :: Maybe TimeOfDay
+    hourFrom :: TimeOfDay,
+    hourTo :: TimeOfDay
 } deriving Show;
 
 makeUTCTimeValid :: Day -> TimeOfDay -> UTCTime
@@ -21,28 +23,17 @@ filterWeekend :: Bool -> [Day] -> [Day]
 filterWeekend True days = days
 filterWeekend _ days = filter (\day -> let dof = dayOfWeek day in dof `elem` [Saturday, Sunday]) days
 
-normalizeMinutes :: Int -> Int
-normalizeMinutes minutes
-                | minutes `mod` 5 == 0 = minutes
-                | otherwise = ((minutes `div` 5) + 1) * 5
-
 createEvent :: Int -> (UTCTime, UTCTime) -> Maybe ()
-createEvent a b | eventCanBeCreated == False = Nothing
-                | otherwise = Just ()
-    where eventCanBeCreated = doesSubjectHasOngoingEventsInPeriod a b
+createEvent subjectId eventPeriod | eventCanBeCreated == False = Nothing
+                | otherwise = insertEvent subjectId eventPeriod
+    where eventCanBeCreated = doesSubjectHasOngoingEventsInPeriod subjectId eventPeriod
 
--- TODO Get info from DB
-doesSubjectHasOngoingEventsInPeriod :: Int -> (UTCTime, UTCTime) -> Bool
-doesSubjectHasOngoingEventsInPeriod _ _ = False
-
--- TODO Do some SQL insert
-insertEvent :: Int -> (UTCTime, UTCTime) -> ()
-insertEvent subjectId (utcFrom, utcTo) = ()
-
-getEventsOfTheDay :: TimeOfDay -> TimeOfDay -> Day -> [(UTCTime, UTCTime)]
-getEventsOfTheDay hourFrom hourTo day = createEventsPeriods (makeUTCTimeValid day hourFrom) (makeUTCTimeValid day hourTo) eventDuration eventGap
-    where eventDuration = 1800
-          eventGap = 0
+getEventsOfTheDay :: GenerateEvents -> Day -> [(UTCTime, UTCTime)]
+getEventsOfTheDay dto day = createEventsPeriods
+        (makeUTCTimeValid day $ hourFrom dto)
+        (makeUTCTimeValid day $ hourTo dto)
+        (eventDuration dto)
+        (eventGap dto)
 
 createEventsPeriods :: UTCTime -> UTCTime -> NominalDiffTime -> NominalDiffTime -> [(UTCTime, UTCTime)]
 createEventsPeriods utcFrom utcTo eventDuration eventGap
@@ -53,24 +44,42 @@ createEventsPeriods utcFrom utcTo eventDuration eventGap
         createEventsPeriods (addUTCTime (eventDuration + eventGap) utcFrom) utcTo eventDuration eventGap
     where utcToInPeriod = addUTCTime (eventDuration - 1) utcFrom
 
-createEvents :: Maybe [Maybe ()]
-createEvents = do
+createListWithDays :: EventGenerationFlow -> [Day]
+createListWithDays (Period dayFrom dayTo) = filterWeekend True [dayFrom .. dayTo]
+createListWithDays (Select days) = filterWeekend True days
+
+createEvents :: GenerateEvents -> [Maybe ()]
+createEvents dto = fmap (createEvent $ subjectId dto) (concat $ map (getEventsOfTheDay dto) (createListWithDays $ eventGenerationFlow dto))
+
+
+normalizeMinutes :: Int -> Int
+normalizeMinutes minutes
+                | minutes `mod` 5 == 0 = minutes
+                | otherwise = ((minutes `div` 5) + 1) * 5
+
+normalizeHourFrom :: Int -> Int -> Maybe TimeOfDay
+normalizeHourFrom hour minutes
+    | normalizedMinutes == 60 = makeTimeOfDayValid (hour + 1) 00 00
+    | otherwise = makeTimeOfDayValid hour normalizedMinutes 00
+    where normalizedMinutes = normalizeMinutes minutes
+
+f = do
     dayFrom <- fromGregorianValid 2010 3 4
     dayTo <- fromGregorianValid 2010 3 10
 
-    hourFrom <- makeTimeOfDayValid 10 30 00
+    hourFrom <- normalizeHourFrom 10 58
     hourTo <- makeTimeOfDayValid 11 50 00
 
     let dto = GenerateEvents {
         subjectId = 1,
         eventDuration = 30 * 60,
+        eventGap = 0,
         includeWeekend = False,
         eventGenerationFlow = Period dayFrom dayTo,
-        hourFrom = makeTimeOfDayValid 10 30 00,
-        hourTo = makeTimeOfDayValid 11 50 00
+        hourFrom = min hourFrom hourTo,
+        hourTo = max hourFrom hourTo
     }
-    let eventsList = concat $ map (getEventsOfTheDay hourFrom hourTo) (filterWeekend True [dayFrom .. dayTo])
 
-    return $ fmap (createEvent 7) eventsList
+    return $ createEvents dto
 
-main = print $ createEvents
+main = print $ f
